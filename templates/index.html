@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>__APP_NAME__</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="__STATIC_STYLE__" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">AUTOMATED MLOPS PIPELINE</p>
+          <h1>__APP_NAME__</h1>
+          <p class="hero-text">__TAGLINE__</p>
+          <div class="hero-badges">
+            <span>Model __MODEL_VERSION__</span>
+            <span>Source __DATA_SOURCE__</span>
+            <span>FastAPI + MLOps</span>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <p class="panel-label">Live model metrics</p>
+          <div class="metric-grid">
+            <div class="metric-card">
+              <span class="metric-name">RMSE</span>
+              <strong>__RMSE__</strong>
+            </div>
+            <div class="metric-card">
+              <span class="metric-name">MAE</span>
+              <strong>__MAE__</strong>
+            </div>
+            <div class="metric-card">
+              <span class="metric-name">R²</span>
+              <strong>__R2__</strong>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="card input-card">
+          <div class="card-heading">
+            <h2>Prediction Input</h2>
+            <button type="button" id="sample-btn" class="ghost-btn">Use sample data</button>
+          </div>
+          <form id="prediction-form" class="prediction-form">
+            <div class="form-grid">
+              <label>
+                <span>Median Income</span>
+                <input type="number" step="0.0001" name="MedInc" placeholder="e.g. 8.3252" required />
+              </label>
+              <label>
+                <span>House Age</span>
+                <input type="number" step="0.1" name="HouseAge" placeholder="e.g. 41" required />
+              </label>
+              <label>
+                <span>Average Rooms</span>
+                <input type="number" step="0.0001" name="AveRooms" placeholder="e.g. 6.984127" required />
+              </label>
+              <label>
+                <span>Average Bedrooms</span>
+                <input type="number" step="0.0001" name="AveBedrms" placeholder="e.g. 1.02381" required />
+              </label>
+              <label>
+                <span>Population</span>
+                <input type="number" step="0.1" name="Population" placeholder="e.g. 322" required />
+              </label>
+              <label>
+                <span>Average Occupancy</span>
+                <input type="number" step="0.0001" name="AveOccup" placeholder="e.g. 2.555556" required />
+              </label>
+              <label>
+                <span>Latitude</span>
+                <input type="number" step="0.0001" name="Latitude" placeholder="e.g. 37.88" required />
+              </label>
+              <label>
+                <span>Longitude</span>
+                <input type="number" step="0.0001" name="Longitude" placeholder="e.g. -122.23" required />
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="primary-btn">Predict Price</button>
+              <button type="reset" class="secondary-btn">Reset</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card result-card">
+          <div class="card-heading">
+            <h2>Prediction Result</h2>
+            <span id="status-pill" class="status-pill idle">Waiting for input</span>
+          </div>
+          <div class="result-highlight">
+            <p class="result-label">Estimated house price</p>
+            <h3 id="prediction-value">--</h3>
+            <p id="prediction-subtext" class="result-subtext">Submit the form to see the predicted value.</p>
+          </div>
+          <div class="result-meta">
+            <div>
+              <span class="meta-label">Model version</span>
+              <strong id="result-model-version">__MODEL_VERSION__</strong>
+            </div>
+            <div>
+              <span class="meta-label">API response</span>
+              <strong id="result-status">Not started</strong>
+            </div>
+          </div>
+          <p id="error-message" class="error-message" hidden></p>
+        </section>
+
+        <section class="card info-card">
+          <div class="card-heading">
+            <h2>Deployment Status</h2>
+            <button type="button" id="refresh-btn" class="ghost-btn">Refresh status</button>
+          </div>
+          <div class="status-grid">
+            <div class="status-block">
+              <span class="meta-label">API health</span>
+              <strong id="health-status">Checking...</strong>
+            </div>
+            <div class="status-block">
+              <span class="meta-label">Model loaded</span>
+              <strong id="health-model-loaded">Checking...</strong>
+            </div>
+            <div class="status-block">
+              <span class="meta-label">Current version</span>
+              <strong id="info-version">__MODEL_VERSION__</strong>
+            </div>
+            <div class="status-block">
+              <span class="meta-label">Data source</span>
+              <strong id="info-source">__DATA_SOURCE__</strong>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      window.APP_CONFIG = {
+        sampleInput: __SAMPLE_INPUT_JSON__
+      };
+    </script>
+    <script src="__STATIC_APP__"></script>
+  </body>
+</html>

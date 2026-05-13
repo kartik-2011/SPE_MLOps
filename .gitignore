@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+.venv312/
+.venv_run/
+venv/
+
+# Models and runtime output
+models/artifacts/*.pkl
+logs/*.log
+
+# Environment files
+.env
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local caches
+data/raw/sklearn/

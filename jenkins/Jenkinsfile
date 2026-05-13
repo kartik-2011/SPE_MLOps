@@ -1,0 +1,77 @@
+pipeline {
+  agent any
+
+  triggers {
+    githubPush()
+  }
+
+  environment {
+    IMAGE_REPO = "${env.DOCKERHUB_USERNAME ?: 'your-dockerhub-username'}/house-price-api"
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    IMAGE_NAME = "${env.IMAGE_REPO}:${env.IMAGE_TAG}"
+    LATEST_IMAGE = "${env.IMAGE_REPO}:latest"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Setup Python') {
+      steps {
+        sh 'python3 -m venv .venv'
+        sh '. .venv/bin/activate && pip install -r requirements.txt'
+      }
+    }
+
+    stage('Run Tests') {
+      steps {
+        sh '. .venv/bin/activate && python -m pytest'
+      }
+    }
+
+    stage('Retrain Model') {
+      steps {
+        sh '''
+          . .venv/bin/activate
+          if [ -f data/incoming/housing.csv ]; then
+            python -m training.retrain --data-source csv --csv-path data/incoming/housing.csv
+          else
+            python -m training.retrain --data-source demo
+          fi
+        '''
+      }
+    }
+
+    stage('Build Docker Image') {
+      steps {
+        sh 'docker build -f docker/api.Dockerfile -t $IMAGE_NAME -t $LATEST_IMAGE .'
+      }
+    }
+
+    stage('Push Docker Image') {
+      when {
+        expression { return env.DOCKERHUB_USERNAME?.trim() && env.DOCKERHUB_TOKEN?.trim() }
+      }
+      steps {
+        sh 'echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin'
+        sh 'docker push $IMAGE_NAME'
+        sh 'docker push $LATEST_IMAGE'
+      }
+    }
+
+    stage('Deploy to Kubernetes') {
+      steps {
+        sh '''
+          kubectl apply -f k8s/configmap.yaml
+          kubectl apply -f k8s/secret.yaml
+          sed "s|your-dockerhub-username/house-price-api:latest|$LATEST_IMAGE|g" k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/hpa.yaml
+        '''
+      }
+    }
+  }
+}

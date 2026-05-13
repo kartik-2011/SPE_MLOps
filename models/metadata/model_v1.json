@@ -1,0 +1,13 @@
+{
+  "version": "v1",
+  "artifact_path": "/Users/ankitkarwasra/Desktop/SPE_Final_project/models/artifacts/model_v1.pkl",
+  "metadata_path": "/Users/ankitkarwasra/Desktop/SPE_Final_project/models/metadata/model_v1.json",
+  "metrics": {
+    "mae": 0.2599718888149858,
+    "rmse": 0.32238550583655284,
+    "r2": 0.9708394236859473
+  },
+  "data_source": "sklearn",
+  "created_at": "2026-04-21T16:25:56.768760+00:00",
+  "is_production": false
+}

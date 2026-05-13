@@ -1,0 +1,6 @@
+- name: Deploy house price MLOps stack
+  hosts: local
+  gather_facts: false
+  roles:
+    - common
+    - app_deploy
