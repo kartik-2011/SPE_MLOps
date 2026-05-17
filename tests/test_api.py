@@ -1,12 +1,18 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.model_loader import resolve_project_path
 from training.registry import get_current_model_entry
 from training.train import train_model
 
 
 def ensure_model():
-    if get_current_model_entry() is None:
+    entry = get_current_model_entry()
+    if entry is None:
+        train_model(data_source="demo")
+        return
+    artifact_path = resolve_project_path(entry["artifact_path"])
+    if not artifact_path.exists():
         train_model(data_source="demo")
 
 

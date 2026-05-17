@@ -67,7 +67,8 @@ pipeline {
         sh '''
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secret.yaml
-          sed "s|your-dockerhub-username/house-price-api:latest|$LATEST_IMAGE|g" k8s/deployment.yaml | kubectl apply -f -
+          kubectl apply -f k8s/deployment.yaml
+          kubectl set image deployment/house-price-api house-price-api=$LATEST_IMAGE
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/hpa.yaml
         '''

@@ -50,6 +50,16 @@ def build_metadata_path(version: str) -> Path:
     return METADATA_DIR / f"model_{version}.json"
 
 
+def build_registry_artifact_path(version: str) -> str:
+    """Return a container-safe relative artifact path for registry metadata."""
+    return str(Path("models") / "artifacts" / f"model_{version}.pkl")
+
+
+def build_registry_metadata_path(version: str) -> str:
+    """Return a container-safe relative metadata path for registry metadata."""
+    return str(Path("models") / "metadata" / f"model_{version}.json")
+
+
 def register_model(version: str, metrics: dict[str, float], data_source: str, promote: bool = True) -> dict:
     """Record a model version in the registry and optionally promote it."""
     registry = load_registry()
@@ -57,8 +67,8 @@ def register_model(version: str, metrics: dict[str, float], data_source: str, pr
     metadata_path = build_metadata_path(version)
     entry = {
         "version": version,
-        "artifact_path": str(artifact_path),
-        "metadata_path": str(metadata_path),
+        "artifact_path": build_registry_artifact_path(version),
+        "metadata_path": build_registry_metadata_path(version),
         "metrics": metrics,
         "data_source": data_source,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -101,3 +111,27 @@ def get_current_model_entry() -> dict | None:
         if entry["version"] == current_version:
             return entry
     return None
+
+
+def normalize_registry_paths() -> dict:
+    """Rewrite old absolute registry paths to relative project paths."""
+    registry = load_registry()
+    updated = False
+    for entry in registry["models"]:
+        version = entry["version"]
+        expected_artifact = build_registry_artifact_path(version)
+        expected_metadata = build_registry_metadata_path(version)
+        if entry.get("artifact_path") != expected_artifact:
+            entry["artifact_path"] = expected_artifact
+            updated = True
+        if entry.get("metadata_path") != expected_metadata:
+            entry["metadata_path"] = expected_metadata
+            updated = True
+    if updated:
+        save_registry(registry)
+        for entry in registry["models"]:
+            metadata_path = MODELS_DIR.parent / entry["metadata_path"]
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            with metadata_path.open("w", encoding="utf-8") as file:
+                json.dump(entry, file, indent=2)
+    return registry
