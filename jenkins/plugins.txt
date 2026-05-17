@@ -6,3 +6,4 @@ credentials-binding
 docker-workflow
 pipeline-stage-view
 blueocean
+mailer

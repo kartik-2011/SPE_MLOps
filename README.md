@@ -52,3 +52,9 @@ This repository contains a production-style MLOps project for house price predic
 5. Jenkins deploys the latest image to Kubernetes.
 6. Kubernetes updates the running API.
 7. Logs appear in Kibana through the ELK pipeline.
+
+## Operational Safeguards
+- Jenkins automatically rolls back the Kubernetes deployment if rollout status fails.
+- Jenkins also verifies the live `/health` endpoint after deployment and rolls back on health-check failure.
+- Optional Slack alerts can be enabled with a Jenkins secret text credential named `slack-webhook-url`.
+- Optional email alerts can be enabled by setting the Jenkins environment variable `ALERT_EMAIL` and configuring Jenkins mail settings.

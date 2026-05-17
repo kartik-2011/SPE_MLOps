@@ -1,3 +1,40 @@
+def notifyFailure(String stageName) {
+  def buildUrl = env.BUILD_URL ?: "N/A"
+  def jobName = env.JOB_NAME ?: "unknown-job"
+  def buildNumber = env.BUILD_NUMBER ?: "unknown-build"
+  def message = "Jenkins pipeline failed at stage '${stageName}' for ${jobName} #${buildNumber}. Build URL: ${buildUrl}"
+
+  echo message
+
+  try {
+    withCredentials([
+      string(credentialsId: 'slack-webhook-url', variable: 'SLACK_WEBHOOK_URL')
+    ]) {
+      sh """
+        curl -sS -X POST -H 'Content-type: application/json' \
+          --data '{"text":"${message.replace("'", "\\'")}"}' \
+          "$SLACK_WEBHOOK_URL"
+      """
+    }
+  } catch (err) {
+    echo "Slack alert skipped: ${err}"
+  }
+
+  if (env.ALERT_EMAIL?.trim()) {
+    try {
+      mail(
+        to: env.ALERT_EMAIL,
+        subject: "Pipeline failure: ${jobName} #${buildNumber}",
+        body: message,
+      )
+    } catch (err) {
+      echo "Email alert skipped: ${err}"
+    }
+  } else {
+    echo 'Email alert skipped: ALERT_EMAIL not configured.'
+  }
+}
+
 pipeline {
   agent any
 
@@ -15,12 +52,18 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Checkout'
+        }
         checkout scm
       }
     }
 
     stage('Setup Python') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Setup Python'
+        }
         sh 'python3 -m venv .venv'
         sh '. .venv/bin/activate && pip install -r requirements.txt'
       }
@@ -28,12 +71,18 @@ pipeline {
 
     stage('Run Tests') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Run Tests'
+        }
         sh '. .venv/bin/activate && python -m pytest'
       }
     }
 
     stage('Retrain Model') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Retrain Model'
+        }
         sh '''
           . .venv/bin/activate
           if [ -f data/incoming/housing.csv ]; then
@@ -47,12 +96,18 @@ pipeline {
 
     stage('Build Docker Image') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Build Docker Image'
+        }
         sh 'docker build -f docker/api.Dockerfile -t $IMAGE_NAME -t $LATEST_IMAGE .'
       }
     }
 
     stage('Push Docker Image') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Push Docker Image'
+        }
         withCredentials([
           usernamePassword(
             credentialsId: 'dockerhub-creds',
@@ -69,14 +124,53 @@ pipeline {
 
     stage('Deploy to Kubernetes') {
       steps {
+        script {
+          env.CURRENT_STAGE = 'Deploy to Kubernetes'
+        }
         sh '''
+          set -euo pipefail
+
+          PREVIOUS_IMAGE="$(kubectl get deployment/house-price-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="house-price-api")].image}')"
+          echo "Previous image: ${PREVIOUS_IMAGE}"
+
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secret.yaml
           kubectl apply -f k8s/deployment.yaml
           kubectl set image deployment/house-price-api house-price-api=$LATEST_IMAGE
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/hpa.yaml
+
+          rollback() {
+            echo "Deployment verification failed. Rolling back to previous stable version."
+            kubectl rollout undo deployment/house-price-api
+            kubectl rollout status deployment/house-price-api --timeout=180s
+          }
+
+          if ! kubectl rollout status deployment/house-price-api --timeout=180s; then
+            rollback
+            exit 1
+          fi
+
+          PF_LOG="$(mktemp)"
+          kubectl port-forward svc/house-price-api-service 18080:80 >"$PF_LOG" 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID >/dev/null 2>&1 || true; rm -f "$PF_LOG"' EXIT
+          sleep 5
+
+          if ! curl -fsS http://127.0.0.1:18080/health; then
+            cat "$PF_LOG" || true
+            rollback
+            exit 1
+          fi
         '''
+      }
+    }
+  }
+
+  post {
+    failure {
+      script {
+        notifyFailure(env.CURRENT_STAGE ?: 'Unknown')
       }
     }
   }
