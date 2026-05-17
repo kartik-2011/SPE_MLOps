@@ -6,7 +6,7 @@ pipeline {
   }
 
   environment {
-    IMAGE_REPO = "${env.DOCKERHUB_USERNAME ?: 'ankitkarwasra'}/house-price-api"
+    IMAGE_REPO = 'ankitkarwasra/house-price-api'
     IMAGE_TAG = "${env.BUILD_NUMBER}"
     IMAGE_NAME = "${env.IMAGE_REPO}:${env.IMAGE_TAG}"
     LATEST_IMAGE = "${env.IMAGE_REPO}:latest"
@@ -52,13 +52,18 @@ pipeline {
     }
 
     stage('Push Docker Image') {
-      when {
-        expression { return env.DOCKERHUB_USERNAME?.trim() && env.DOCKERHUB_TOKEN?.trim() }
-      }
       steps {
-        sh 'echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin'
-        sh 'docker push $IMAGE_NAME'
-        sh 'docker push $LATEST_IMAGE'
+        withCredentials([
+          usernamePassword(
+            credentialsId: 'dockerhub-creds',
+            usernameVariable: 'DOCKERHUB_USERNAME',
+            passwordVariable: 'DOCKERHUB_TOKEN',
+          )
+        ]) {
+          sh 'echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin'
+          sh 'docker push $IMAGE_NAME'
+          sh 'docker push $LATEST_IMAGE'
+        }
       }
     }
 
