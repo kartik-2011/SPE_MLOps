@@ -47,6 +47,8 @@ pipeline {
     IMAGE_TAG = "${env.BUILD_NUMBER}"
     IMAGE_NAME = "${env.IMAGE_REPO}:${env.IMAGE_TAG}"
     LATEST_IMAGE = "${env.IMAGE_REPO}:latest"
+    PREVIOUS_IMAGE = ''
+    DEPLOY_FAILED = 'false'
   }
 
   stages {
@@ -126,30 +128,92 @@ pipeline {
       steps {
         script {
           env.CURRENT_STAGE = 'Deploy to Kubernetes'
+          env.PREVIOUS_IMAGE = sh(
+            script: "kubectl get deployment/house-price-api -o jsonpath='{.spec.template.spec.containers[?(@.name==\"house-price-api\")].image}'",
+            returnStdout: true,
+          ).trim()
+
+          echo "Previous image: ${env.PREVIOUS_IMAGE}"
+
+          int deployStatus = sh(
+            script: '''
+              set -euo pipefail
+              kubectl apply -f k8s/configmap.yaml
+              kubectl apply -f k8s/secret.yaml
+              kubectl apply -f k8s/deployment.yaml
+              kubectl set image deployment/house-price-api house-price-api=$LATEST_IMAGE
+              kubectl apply -f k8s/service.yaml
+              kubectl apply -f k8s/hpa.yaml
+              kubectl rollout status deployment/house-price-api --timeout=180s
+            ''',
+            returnStatus: true,
+          )
+
+          if (deployStatus != 0) {
+            env.DEPLOY_FAILED = 'true'
+            currentBuild.result = 'FAILURE'
+            echo 'Deployment rollout failed. Marking build for rollback.'
+          }
+        }
+      }
+    }
+
+    stage('Verify Deployment Health') {
+      when {
+        expression { env.DEPLOY_FAILED != 'true' }
+      }
+      steps {
+        script {
+          env.CURRENT_STAGE = 'Verify Deployment Health'
+          int healthStatus = sh(
+            script: '''
+              set -euo pipefail
+              PF_LOG="$(mktemp)"
+              kubectl port-forward svc/house-price-api-service 18080:80 >"$PF_LOG" 2>&1 &
+              PF_PID=$!
+              trap 'kill $PF_PID >/dev/null 2>&1 || true; rm -f "$PF_LOG"' EXIT
+              sleep 5
+              curl -fsS http://127.0.0.1:18080/health
+            ''',
+            returnStatus: true,
+          )
+
+          if (healthStatus != 0) {
+            env.DEPLOY_FAILED = 'true'
+            currentBuild.result = 'FAILURE'
+            echo 'Live health verification failed. Marking build for rollback.'
+          }
+        }
+      }
+    }
+
+    stage('Rollback on Failure') {
+      when {
+        expression { env.DEPLOY_FAILED == 'true' }
+      }
+      steps {
+        script {
+          env.CURRENT_STAGE = 'Rollback on Failure'
         }
         sh '''
           set -euo pipefail
+          echo "Rolling back deployment. Previous stable image was: ${PREVIOUS_IMAGE}"
+          kubectl rollout undo deployment/house-price-api
+          kubectl rollout status deployment/house-price-api --timeout=180s
+        '''
+      }
+    }
 
-          PREVIOUS_IMAGE="$(kubectl get deployment/house-price-api -o jsonpath='{.spec.template.spec.containers[?(@.name=="house-price-api")].image}')"
-          echo "Previous image: ${PREVIOUS_IMAGE}"
-
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/secret.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl set image deployment/house-price-api house-price-api=$LATEST_IMAGE
-          kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/hpa.yaml
-
-          rollback() {
-            echo "Deployment verification failed. Rolling back to previous stable version."
-            kubectl rollout undo deployment/house-price-api
-            kubectl rollout status deployment/house-price-api --timeout=180s
-          }
-
-          if ! kubectl rollout status deployment/house-price-api --timeout=180s; then
-            rollback
-            exit 1
-          fi
+    stage('Post-Deploy Observability Check') {
+      when {
+        expression { env.DEPLOY_FAILED != 'true' }
+      }
+      steps {
+        script {
+          env.CURRENT_STAGE = 'Post-Deploy Observability Check'
+        }
+        sh '''
+          set -euo pipefail
 
           PF_LOG="$(mktemp)"
           kubectl port-forward svc/house-price-api-service 18080:80 >"$PF_LOG" 2>&1 &
@@ -157,11 +221,12 @@ pipeline {
           trap 'kill $PF_PID >/dev/null 2>&1 || true; rm -f "$PF_LOG"' EXIT
           sleep 5
 
-          if ! curl -fsS http://127.0.0.1:18080/health; then
-            cat "$PF_LOG" || true
-            rollback
-            exit 1
-          fi
+          curl -fsS http://127.0.0.1:18080/health
+          curl -fsS -X POST http://127.0.0.1:18080/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"MedInc":8.3252,"HouseAge":41.0,"AveRooms":6.984127,"AveBedrms":1.02381,"Population":322.0,"AveOccup":2.555556,"Latitude":37.88,"Longitude":-122.23}'
+
+          curl -fsS http://host.docker.internal:9200 >/dev/null
         '''
       }
     }
